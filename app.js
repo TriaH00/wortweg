@@ -79,10 +79,10 @@ function numDe(n){if(n<20)return ONES[n];if(n<100){const t=Math.floor(n/10),u=n%
 
 /* ================= STATO ================= */
 const LSK='wortweg-v4';
-const DEF=()=>({v:4,w:{},ph:[],min:{},done:{},custom:[],newDay:{},hist:{},man:{},dlg:{},onb:false,
-  set:{imm:45,rev:15,sha:10,pas:20,out:10,newPerDay:20,rate:1,voiceMode:'neural',voiceURI:'',showTr:false,listenFirst:false,ntts:false,level:'A1'},updated:0});
+const DEF=()=>({v:5,art:{},vb:{},w:{},ph:[],min:{},done:{},custom:[],newDay:{},hist:{},man:{},dlg:{},onb:false,
+  set:{imm:45,rev:15,sha:10,pas:20,out:10,newPerDay:20,rate:1,voiceMode:'neural',voiceURI:'',showTr:false,listenFirst:false,ntts:true,level:'A1'},updated:0});
 function merge(b,o){for(const k in o){const v=o[k];if(v&&typeof v==='object'&&!Array.isArray(v)&&b[k]&&typeof b[k]==='object'&&!Array.isArray(b[k]))merge(b[k],v);else b[k]=v}return b}
-let S=DEF();try{const r=localStorage.getItem(LSK)||localStorage.getItem('wortweg-v2');if(r){S=merge(DEF(),JSON.parse(r));S.v=4}}catch(e){}
+let S=DEF();try{const r=localStorage.getItem(LSK)||localStorage.getItem('wortweg-v2');if(r){S=merge(DEF(),JSON.parse(r));if((S.v||0)<5){S.set.ntts=true;S.v=5}}}catch(e){}
 let saveT=null;
 function save(){S.updated=Date.now();clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(LSK,JSON.stringify(S))}catch(e){toast('Spazio pieno: esporta un backup dalle impostazioni')}},300)}
 addEventListener('pagehide',()=>{try{localStorage.setItem(LSK,JSON.stringify(S))}catch(e){}});
@@ -108,6 +108,7 @@ function loadVoices(){try{DE_VOICES=speechSynthesis.getVoices().filter(v=>VR(v)>
 if('speechSynthesis' in window){loadVoices();try{speechSynthesis.onvoiceschanged=loadVoices}catch(e){}}
 const AUD={el:new Audio(),tok:0,res:null,playing:false};AUD.el.preload='auto';
 const clipKey=t=>S.set.voiceMode!=='browser'&&D.A[t]?D.A[t]:null;
+const slowKey=t=>S.set.voiceMode!=='browser'&&D.AS&&D.AS[t]?D.AS[t]:null;
 const clipUrl=id=>`audio/${id}.mp3`;
 function stopAudio(){AUD.tok++;try{AUD.el.pause();AUD.el.onended=null;AUD.el.onerror=null}catch(e){}try{speechSynthesis.cancel()}catch(e){}AUD.playing=false;const r=AUD.res;AUD.res=null;r&&r(false)}
 function playUrl(u,rate,tok){return new Promise(res=>{if(tok!==AUD.tok)return res(false);const a=AUD.el;a.src=u;a.preservesPitch=true;a.playbackRate=rate;const fin=ok=>{a.onended=a.onerror=null;res(ok)};a.onended=()=>fin(true);a.onerror=()=>fin('err');AUD.playing=true;a.play().catch(()=>fin('err'))})}
@@ -115,12 +116,12 @@ function deviceSpeak(text,rate,done){if(!('speechSynthesis' in window))return do
 function speakP(text,o={}){text=String(text||'').trim();if(!o.passive&&PASS.on)passivePause();stopAudio();const tok=AUD.tok;
   return new Promise(async res=>{AUD.res=res;const done=ok=>{if(AUD.res===res){AUD.res=null;AUD.playing=false}res(ok!==false)};
     const rate=(o.rate||1)*S.set.rate;if(!text)return done(true);
-    const key=clipKey(text);
-    if(key){const ok=await playUrl(clipUrl(key),rate,tok);if(tok!==AUD.tok)return;if(ok!=='err')return done(ok)}
+    let key=clipKey(text),r2=rate;if(o.slow){const sk=slowKey(text);if(sk){key=sk;r2=S.set.rate}}
+    if(key){const ok=await playUrl(clipUrl(key),r2,tok);if(tok!==AUD.tok)return;if(ok!=='err')return done(ok)}
     if(S.set.ntts&&S.set.voiceMode!=='browser'&&NT.st==='ready'){try{for(const part of splitSent(text)){if(tok!==AUD.tok)return;const u=await ntSynth(part);if(tok!==AUD.tok)return;await playUrl(u,rate,tok)}if(tok!==AUD.tok)return;return done(true)}catch(e){if(tok!==AUD.tok)return}}
     deviceSpeak(text,rate,done)});
 }
-const speak=(t,slow)=>speakP(t,{rate:slow?.72:1});
+const speak=(t,slow)=>speakP(t,{rate:slow?.72:1,slow:!!slow});
 const playBtn=(t,cls='')=>`<button class="play ${cls}" data-say="${esc(t)}" aria-label="Ascolta">${ic('spk')}</button>`;
 const slowBtn=t=>`<button class="play slow" data-say="${esc(t)}" data-slow="1" aria-label="Ascolta lentamente">0.7×</button>`;
 document.addEventListener('click',e=>{const b=e.target.closest('[data-say]');if(b){e.preventDefault();e.stopPropagation();speak(b.dataset.say,!!b.dataset.slow)}},true);
@@ -191,20 +192,22 @@ function plan(){const d=today(),m=dayMin(),s=S.set,due=dueWords().length+duePh()
    {k:'pas',ic:'head',t:'Ascolto passivo',d:`${fmtMin(m.pas)} di ${s.pas} min · in sottofondo o prima di dormire`,done:m.pas>=s.pas*60,href:'#oggi',act:'pas',p:m.pas/(s.pas*60)});
   return P}
 const nextStep=()=>plan().find(x=>!x.done);
-function updNext(){const n=nextStep(),b=$('#nextBtn');if(!b)return;if(!n){b.className='next done';b.href='#oggi';b.innerHTML=`${ic('check')} <span>Fatto oggi</span>`;b.onclick=null;return}b.className='next';b.href=n.act?'#oggi':n.href;b.innerHTML=`<span>Prossimo: ${n.t}</span> ${ic('fwd')}`;b.onclick=n.act==='pas'?(e=>{e.preventDefault();passiveStart(null,0)}):null}
+function updNext(){const n=nextStep(),b=$('#nextBtn');if(!b)return;if(!n){b.className='next done';b.href='#oggi';b.innerHTML=`${ic('check')} <span>Fatto oggi</span>`;b.onclick=null;return}b.className='next';b.href=n.act?'#oggi':n.href;b.innerHTML=`<small>Prossima tappa</small><span>${n.t}</span>`;b.onclick=n.act==='pas'?(e=>{e.preventDefault();passiveStart(null,0)}):null}
 
 /* ================= ROUTER ================= */
-const TABS=[['oggi','Oggi','today'],['leggi','Leggi','read'],['parole','Parole','words'],['pratica','Pratica','practice'],['manuale','Manuale','book'],['parla','Parla','talk']];
-const TABOF={testo:'leggi',nuove:'parole',ripasso:'pratica',shadowing:'pratica',dettato:'pratica',suoni:'pratica',logica:'manuale',pronuncia:'pratica',completa:'pratica',numeri:'pratica',dialogo:'parla'};
+const TABS=[['oggi','Oggi','today'],['leggi','Leggi','read'],['allenati','Allenati','practice'],['manuale','Manuale','book'],['parla','Parla','talk']];
+const TABOF={testo:'leggi',parole:'allenati',pratica:'allenati',nuove:'allenati',ripasso:'allenati',shadowing:'allenati',dettato:'allenati',suoni:'allenati',pronuncia:'allenati',completa:'allenati',numeri:'allenati',articoli:'allenati',verbi:'allenati',casi:'allenati',ordina:'allenati',ascolta:'allenati',logica:'manuale',dialogo:'parla'};
 const PRAT=[['ripasso','Ripasso','review'],['shadowing','Shadowing','shadow'],['pronuncia','Pronuncia','mic'],['dettato','Dettato','pen'],['completa','Completa','gap'],['numeri','Numeri','hash'],['suoni','Suoni','ear']];
 function route(){const h=decodeURIComponent(location.hash.slice(1));const [v,...rest]=h.split('-');const ok=TABS.some(t=>t[0]===v)||v in TABOF;return {v:ok?v:'oggi',arg:rest.join('-')}}
 addEventListener('hashchange',()=>{closeWord();render();scrollTo(0,0)});
-function nav(){const v=route().v,r=TABOF[v]||v;const due=dueWords().length+duePh().length;const badge=k=>k==='pratica'&&due?`<span class="badge tnum">${due>99?'99+':due}</span>`:'';
+function nav(){const v=route().v,r=TABOF[v]||v;const due=dueWords().length+duePh().length;const badge=k=>k==='allenati'&&due?`<span class="badge tnum">${due>99?'99+':due}</span>`:'';
   const h=TABS.map(([k,t,i])=>`<a href="#${k}" class="${k===r?'on':''}" ${k===r?'aria-current="page"':''}>${ic(i)}<span>${t}</span>${badge(k)}</a>`).join('');
   $('#nav').innerHTML=h;$('#mobnav').innerHTML=h;updNext()}
-const subnav=cur=>`<nav class="subnav" aria-label="Pratica">${PRAT.map(([k,t,i])=>`<a href="#${k}" class="${k===cur?'on':''}">${ic(i)} ${t}</a>`).join('')}</nav>`;
-function render(){nav();ACT.kind=null;const {v,arg}=route();const m=$('#view');if(v!=='shadowing')shStop();if(v!=='testo')readStop();recStop();
-  ({oggi:vToday,leggi:vLib,testo:vReader,parole:vWords,nuove:vNew,pratica:vPratica,ripasso:vReview,shadowing:vShadow,dettato:vDict,suoni:vSounds,logica:vLogic,manuale:vManual,parla:vTalk,dialogo:vDialog,pronuncia:vPron,completa:vCloze,numeri:vNumbers})[v](m,arg)}
+const subnav=()=>'';
+const OWNCRUMB=['testo','nuove','manuale','logica','dialogo'];
+function crumbs(v){const c=$('#crumbs');const tab=TABOF[v];if(!tab||OWNCRUMB.includes(v)){c.innerHTML='';c.hidden=true;return}const T=TABS.find(t=>t[0]===tab);const ex=EXLIST.find(e=>e.k===v);c.hidden=false;c.innerHTML=`<a href="#${tab}">${ic('back')} ${T[1]}</a><span>/</span><span>${esc(ex?ex.t:v)}</span>`}
+function render(){nav();ACT.kind=null;const {v,arg}=route();const m=$('#view');crumbs(v);if(v!=='shadowing')shStop();if(v!=='testo')readStop();recStop();
+  ({oggi:vToday,leggi:vLib,testo:vReader,parole:vWords,nuove:vNew,pratica:vPratica,allenati:vPratica,articoli:vArt,verbi:vVerbs,casi:vCases,ordina:vOrder,ascolta:vListen,ripasso:vReview,shadowing:vShadow,dettato:vDict,suoni:vSounds,logica:vLogic,manuale:vManual,parla:vTalk,dialogo:vDialog,pronuncia:vPron,completa:vCloze,numeri:vNumbers})[v](m,arg)}
 
 /* ================= OGGI ================= */
 function ringSvg(v,max){const r=24,c=2*Math.PI*r,p=Math.max(0,Math.min(1,v/max));return `<svg class="ring" viewBox="0 0 56 56" aria-hidden="true"><circle cx="28" cy="28" r="${r}" fill="none" stroke="var(--line2)" stroke-width="6"/>${p>0?`<circle cx="28" cy="28" r="${r}" fill="none" stroke="${p>=1?'var(--ok)':'var(--accent)'}" stroke-width="6" stroke-linecap="round" stroke-dasharray="${c*p} ${c}" transform="rotate(-90 28 28)"/>`:''}<text x="28" y="32" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ink)">${Math.round(p*100)}%</text></svg>`}
@@ -218,17 +221,19 @@ function chart14(){const days=[...Array(14)].map((_,k)=>{const x=new Date();x.se
 function streak(){let n=0;for(let k=0;k<400;k++){const d=new Date();d.setDate(d.getDate()-k);const m=S.min[dk(d)];const tot=m?m.imm+m.rev+m.sha+m.pas+m.out:0;if(tot>=600)n++;else if(k>0)break}return n}
 function vToday(m){ACT.kind=null;const d=today(),s=S.set,P=plan(),n=P.find(x=>!x.done);const kn=knownCount();S.hist[d]=kn;
   const lr=CORE.filter(i=>{const x=ws(i);return x>=1&&x<=3}).length;const left=Math.max(0,1000-kn),eta=new Date(Date.now()+Math.ceil(left/Math.max(5,s.newPerDay))*DAY);
-  const [wi,wo]=weekIO(),tot=wi+wo,hr=new Date().getHours(),bp=blockProg(d),st=streak();
-  const week=[...Array(7)].map((_,k)=>{const x=new Date();x.setDate(x.getDate()-(6-k));const pr=blockProg(dk(x));return `<div class="day ${k===6?'today':''}"><div class="dots">${pr.map(p=>`<i class="${p>=1?'on':''}" style="${p>0&&p<1?`background:linear-gradient(to top,var(--accent) ${p*100}%,var(--line2) ${p*100}%)`:''}"></i>`).join('')}</div>${['Do','Lu','Ma','Me','Gi','Ve','Sa'][x.getDay()]}</div>`}).join('');
-  m.innerHTML=`<div class="hero"><div>
-   ${n?`<a class="bigcta" href="${n.act?'#oggi':n.href}" id="cta"><div><span>${hr<11?'Guten Morgen':hr<18?'Guten Tag':'Guten Abend'} · prossimo passo</span><b>${esc(n.t)}</b><span>${esc(n.d)}</span></div>${ic('fwd')}</a>`:`<div class="bigcta done"><div><span>Gut gemacht!</span><b>Il sistema di oggi è completo</b><span>Se hai tempo, leggi ancora: più input = più progressi.</span></div>${ic('check')}</div>`}
-   <div class="card"><div class="between" style="margin-bottom:6px"><h2 class="h3">Il piano di oggi</h2><span class="small muted tnum">${P.filter(x=>x.done).length}/${P.length} fatti</span></div><div class="plan">${P.map((x,k)=>`<a class="step ${x.done?'done':x===n?'cur':''}" href="${x.act?'#oggi':x.href}" data-k="${x.k}"><span class="chk">${x.done?'✓':k+1}</span><span><span class="st-t">${ic(x.ic)} ${esc(x.t)}</span><br><span class="st-d">${esc(x.d)}</span></span><span class="row">${x.k==='pas'?`<button class="btn sec sm" id="nightB" aria-label="Ascolto prima di dormire">${ic('moon')}</button>`:''}<span class="bar ${x.done?'ok':''}"><i style="width:${Math.min(100,(x.p||0)*100)}%"></i></span></span></a>`).join('')}</div></div></div>
-   <div class="stack"><div class="card"><div class="between"><div class="eyebrow">${new Date().toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'})}</div>${st?`<span class="pill ok tnum">${st} ${st===1?'giorno':'giorni'} di fila</span>`:''}</div><p class="small muted" style="margin:6px 0 0">Un sistema, non la motivazione: tre blocchi al giorno (immersione, ripasso, passivo).</p><div class="week">${week}</div><div class="row" style="margin-top:14px;gap:18px">${['Immersione','Ripasso','Passivo'].map((t,k)=>`<div class="row" style="gap:8px">${ringSvg(bp[k],1)}<span class="small"><b>${t}</b></span></div>`).join('')}</div></div>
-   <div class="card stack"><div class="between"><h2 class="h3">Input e output · 7 giorni</h2><span class="pill ${tot&&wi/tot>=.7?'ok':'warn'} tnum">${tot?Math.round(100*wi/tot)+' / '+Math.round(100*wo/tot):'—'}</span></div><div class="split"><i class="in" style="width:${tot?100*wi/tot:80}%"></i><i class="out" style="width:${tot?100*wo/tot:20}%"></i></div><div class="between small"><span><b style="color:var(--accent)">Input</b> ${fmtMin(wi)}</span><span><b style="color:var(--warn)">Output</b> ${fmtMin(wo)}</span></div><p class="small muted" style="margin:0">Obiettivo: circa 80% ascolto e lettura, 20% parlare e scrivere.</p></div></div></div>
-  <div class="grid g2"><div class="card stack"><div class="between"><h2 class="h3">Le 1000 parole più frequenti</h2><a class="btn sm sec" href="#parole">Elenco</a></div><div class="row" style="align-items:baseline"><span class="big tnum">${kn}</span><span class="muted">conosciute · ${lr} in apprendimento</span></div><div class="bar ${kn>=1000?'ok':''}"><i style="width:${Math.min(100,kn/10)}%"></i></div><p class="small muted" style="margin:0">Con mille parole capisci circa l'85% del parlato quotidiano. Al ritmo di ${s.newPerDay} al giorno ci arrivi verso il <b>${eta.toLocaleDateString('it-IT',{day:'numeric',month:'long'})}</b>.</p></div>
-   <div class="card stack"><h2 class="h3">Gli ultimi 14 giorni</h2>${chart14()}</div></div>`;
+  const [wi,wo]=weekIO(),tot=wi+wo,hr=new Date().getHours(),st=streak(),nd=P.filter(x=>x.done).length;
+  const week=[...Array(7)].map((_,k)=>{const x=new Date();x.setDate(x.getDate()-(6-k));const pr=blockProg(dk(x));const f=(pr[0]+pr[1]+pr[2])/3;return `<div class="wd ${k===6?'today':''}"><i style="--f:${f}" class="${f>=1?'full':''}"></i><span>${['D','L','M','M','G','V','S'][x.getDay()]}</span></div>`}).join('');
+  m.innerHTML=`<div class="today">
+   <div class="tmain"><p class="greet">${hr<11?'Guten Morgen':hr<18?'Guten Tag':'Guten Abend'}. ${n?`Ti mancano ${P.length-nd} tappe su ${P.length}.`:'Hai finito il giro di oggi.'}</p>
+   ${n?`<a class="sign" href="${n.act?'#oggi':n.href}" id="cta"><span class="sign-k">Prossima tappa</span><b>${esc(n.t)}</b><span class="sign-d">${esc(n.d)}</span></a>`:`<div class="sign done"><span class="sign-k">Fatto</span><b>Il piano di oggi è completo</b><span class="sign-d">Se hai tempo, leggi ancora: più input, più progressi.</span></div>`}
+   <ol class="line" aria-label="Il piano di oggi">${P.map(x=>`<li class="stop ${x.done?'done':x===n?'cur':''}"><a href="${x.act?'#oggi':x.href}" data-k="${x.k}"><span class="dotp" aria-hidden="true">${x.done?ic('check'):''}</span><span class="stx"><b>${esc(x.t)}</b><span>${esc(x.d)}</span></span>${x.k==='pas'?`<button class="btn sec sm" id="nightB" aria-label="Ascolto prima di dormire">${ic('moon')} Notte</button>`:''}</a></li>`).join('')}</ol></div>
+   <aside class="tside">
+    <section class="card stack"><div class="between"><h2 class="h3">Questa settimana</h2>${st?`<span class="pill ok tnum">${st} ${st===1?'giorno':'giorni'} di fila</span>`:''}</div><div class="wk">${week}</div><p class="small muted" style="margin:0">Il cerchio si riempie con i tre blocchi del giorno: immersione, ripasso, ascolto passivo.</p></section>
+    <section class="card stack"><h2 class="h3">Le 1000 parole più usate</h2><div class="row" style="align-items:baseline;gap:8px"><span class="big tnum">${kn}</span><span class="muted">conosciute, ${lr} in corso</span></div><div class="bar ${kn>=1000?'ok':''}"><i style="width:${Math.min(100,kn/10)}%"></i></div><p class="small muted" style="margin:0">Con mille parole capisci circa l'85% del parlato di ogni giorno. A ${s.newPerDay} al giorno ci arrivi verso il ${eta.toLocaleDateString('it-IT',{day:'numeric',month:'long'})}.</p></section>
+    <details class="card"><summary><b>Statistiche</b> <span class="muted small">ultimi 14 giorni</span></summary><div class="stack" style="margin-top:12px">${chart14()}<div class="between small"><span>Input ${fmtMin(wi)}</span><span>Output ${fmtMin(wo)}</span></div><div class="split"><i class="in" style="width:${tot?100*wi/tot:80}%"></i><i class="out" style="width:${tot?100*wo/tot:20}%"></i></div><p class="small muted" style="margin:0">Obiettivo: circa 80% ascolto e lettura, 20% parlare e scrivere.</p></div></details>
+   </aside></div>`;
   const nb=$('#nightB',m);if(nb)nb.onclick=e=>{e.preventDefault();e.stopPropagation();nightStart()};
-  $$('.step[data-k="pas"]',m).forEach(a=>a.addEventListener('click',e=>{if(e.target.closest('#nightB'))return;e.preventDefault();passiveStart(null,0)}));
+  $$('[data-k="pas"]',m).forEach(a=>a.addEventListener('click',e=>{if(e.target.closest('#nightB'))return;e.preventDefault();passiveStart(null,0)}));
   const c=$('#cta',m);if(c&&n&&n.act==='pas')c.onclick=e=>{e.preventDefault();passiveStart(null,0)};save()}
 
 /* ================= LEGGI ================= */
@@ -290,7 +295,7 @@ function vReader(m,id){const t=getText(id);if(!t){location.hash='#leggi';return}
 function updComp(){if(!RD)return;const c=compOf(RD.t.s),[l,cl]=compLabel(c);const e=$('#cmp');if(!e)return;e.textContent=Math.round(c*100)+'%';$('#cmpb').style.width=c*100+'%';$('#cmpb').style.background=`var(--${cl==='acc'?'accent':cl})`;
   $('#cmpt').textContent=c>=.9?'Facile: perfetto per shadowing e ripasso.':c>=.68?'Zona ideale: abbastanza per seguire, con abbastanza parole nuove da assorbire.':c>=.5?'Un po\' difficile: tieni le traduzioni a portata di mano.':'Difficile: torna a questo testo più avanti.'}
 function setCur(si){$$('.sent').forEach(x=>x.classList.toggle('cur',+x.dataset.si===si));if(RD)RD.cur=si;const el=$(`.sent[data-si="${si}"]`);if(el){const r=el.getBoundingClientRect();if(r.top<90||r.bottom>innerHeight-110)el.scrollIntoView({block:'center',behavior:'smooth'})}}
-async function playSent(si){if(!RD)return;setCur(si);const s=RD.t.s[si];if(RD.t.s[si+1])ntPrefetch(RD.t.s[si+1][0]);const ok=await speakP(s[0],{rate:RD.rate||1});if(ok&&RD){RD.heard.add(si);const el=$(`.sent[data-si="${si}"]`);if(el)el.classList.remove('hid')}return ok}
+async function playSent(si){if(!RD)return;setCur(si);const s=RD.t.s[si];if(RD.t.s[si+1])ntPrefetch(RD.t.s[si+1][0]);const ok=await speakP(s[0],{rate:RD.rate||1,slow:(RD.rate||1)<.85});if(ok&&RD){RD.heard.add(si);const el=$(`.sent[data-si="${si}"]`);if(el)el.classList.remove('hid')}return ok}
 async function readAll(from){const run=++RD.run;RD.playing=true;$('#playAll').innerHTML=ic('pause')+' Pausa';
   for(let i=from;i<RD.t.s.length;i++){if(!RD||run!==RD.run)return;const ok=await playSent(i);if(!RD||run!==RD.run)return;if(!ok){readStop();return}await sleep(450)}readStop()}
 function readStop(){if(!RD)return;RD.run++;if(RD.playing){RD.playing=false;stopAudio()}const b=$('#playAll');if(b)b.innerHTML=ic('play')+' Ascolta tutto'}
@@ -365,9 +370,9 @@ let NW=null;
 function exampleFor(i){const e=D.EX[i];if(e){const st=D.S[e[0]];const s=st.s[e[1]];return {de:s[0],it:s[1],src:st.t}}const w=S.w[V[i][0]];if(w&&w.c)return {de:w.c,it:'',src:''};return null}
 function vNew(m){ACT.kind='rev';if(!NW||NW.fin){const d=today(),done=S.newDay[d]||0,need=Math.max(0,S.set.newPerDay-done);
    const ids=CORE.filter(i=>ws(i)===0).slice(0,need||Math.min(10,S.set.newPerDay));
-   if(!ids.length){m.innerHTML=`<div class="crumb"><a href="#parole">${ic('back')} Parole</a></div><div class="card"><h2>Hai classificato tutte le parole frequenti!</h2><p class="muted">Continua con testi più difficili.</p></div>`;return}NW={ids,n:0,learn:[]}}
+   if(!ids.length){m.innerHTML=`<div class="crumb"><a href="#allenati">${ic('back')} Allenati</a></div><div class="card"><h2>Hai classificato tutte le parole frequenti!</h2><p class="muted">Continua con testi più difficili.</p></div>`;return}NW={ids,n:0,learn:[]}}
   drawNew(m)}
-function drawNew(m=$('#view')){if(!NW)return;const crumb=`<div class="crumb"><a href="#parole">${ic('back')} Parole</a><span>/</span><span>Parole di oggi</span></div>`;
+function drawNew(m=$('#view')){if(!NW)return;const crumb=`<div class="crumb"><a href="#allenati">${ic('back')} Allenati</a><span>/</span><span>Parole nuove</span></div>`;
   if(NW.n>=NW.ids.length){NW.fin=true;const learn=NW.learn;const t=learn.length?D.S.map(x=>[x,x.s.reduce((a,s)=>a+s[2].filter(i=>learn.includes(i)).length,0)]).sort((a,b)=>b[1]-a[1])[0][0]:bestText();
    m.innerHTML=`${crumb}<div class="flash"><div class="fcard" style="align-items:flex-start"><div class="eyebrow">Parole di oggi</div><h2>${learn.length?`${learn.length} parole nuove in apprendimento.`:'Le conoscevi tutte!'}</h2><p class="muted">Ora incontrale in un testo vero: il testo qui sotto ne contiene di più.</p><div class="chips">${learn.map(i=>`<span class="chipw">${esc(disp(i))}</span>`).join('')}</div><div class="row"><a class="btn pri" href="#testo-${t.id}">${ic('read')} Leggi «${esc(t.t)}»</a><a class="btn ghost" href="#oggi">Oggi</a></div></div></div>`;updNext();return}
   const i=NW.ids[NW.n],ex=exampleFor(i);
@@ -392,15 +397,128 @@ function drawKQ(){const box=$('#kq');if(!box||!KQ)return;if(KQ.n>=KQ.q.length){b
   $$('.opt',box).forEach(b=>b.onclick=()=>{const o=opts[+b.dataset.k];const ok=o===c;b.classList.add(ok?'right':'wrong');if(!ok)$$('.opt',box)[opts.indexOf(c)].classList.add('right');if(ok)KQ.ok++;$$('.opt',box).forEach(x=>x.disabled=true);setTimeout(()=>{KQ.n++;drawKQ()},ok?700:1500)})}
 
 /* ================= PRATICA ================= */
-function vPratica(m){ACT.kind=null;const due=dueWords().length+duePh().length,mm=dayMin();
-  const C=[['ripasso','review','Ripasso',due?`${due} elementi in scadenza.`:'Niente in scadenza.','Frasi salvate e parole in apprendimento, a intervalli crescenti.'],
-   ['shadowing','shadow','Shadowing',`${fmtMin(mm.sha)} di ${S.set.sha} min oggi.`,'Parla insieme alla voce: ritmo, suoni e intonazione. Puoi registrarti e confrontarti.'],
-   ['pronuncia','mic','Pronuncia',SR?'Leggi ad alta voce.':'Registra e confronta.','Il riconoscimento vocale del browser ti dice cosa ha capito, parola per parola.'],
-   ['dettato','pen','Dettato','Ascolta e scrivi.','Orecchio e ortografia insieme, con le tue frasi o un testo.'],
-   ['completa','gap','Completa il testo','Riempi i buchi.','Riscrivi le parole mancanti di un testo che hai letto: memoria attiva.'],
-   ['numeri','hash','Numeri','Da 0 a 1000.','Ascolta e scrivi in cifre, oppure scrivi in lettere.'],
-   ['suoni','ear','Suoni e coppie minime','ü, ö, ch, ei/ie, r…','Distingui suoni simili (schon/schön, Wein/Wien) e ripetili.']];
-  m.innerHTML=`<div class="vhead"><div><h1>Pratica</h1><p>Ripasso e shadowing ogni giorno, più allenamenti mirati quando vuoi. Diversi modi di lavorare sulla stessa lingua: ascoltare, ripetere, scrivere, ricordare.</p></div></div>${subnav('')}<div class="hub">${C.map(([k,i,t,s,d])=>`<a class="hcard" href="#${k}"><span class="ico">${ic(i)}</span><h3>${t}</h3><b class="small">${s}</b><p>${d}</p></a>`).join('')}</div>`}
+function vPratica(m){ACT.kind=null;const due=dueWords().length+duePh().length,mm=dayMin(),nd=S.newDay[today()]||0;
+  const st={ripasso:due?`${due} da ripassare`:'niente in scadenza',nuove:`${nd}/${S.set.newPerDay} oggi`,shadowing:`${fmtMin(mm.sha)} di ${S.set.sha} min`,
+   articoli:artStat(),verbi:`${D.VB.length} verbi`,casi:'nominativo, accusativo, dativo',parole:`${knownCount()} conosciute`,'parole-frasi':`${S.ph.length} salvate`};
+  m.innerHTML=`<div class="vhead"><div><h1>Allenati</h1><p>Ogni esercizio allena una cosa sola. Quelli del primo gruppo sono nel piano di ogni giorno, gli altri usali quando vuoi.</p></div></div>
+  ${EXGROUPS.map(g=>`<section class="exg"><h2 class="h3">${g.t}</h2><div class="exlist">${EXLIST.filter(e=>e.g===g.k).map(e=>`<a class="exrow" href="#${e.k}"><span class="ico">${ic(e.i)}</span><span class="exm"><b>${e.t}</b><span>${e.d}</span></span><span class="exs">${esc(st[e.k]||'')}${e.k==='ripasso'&&due?' <span class="dot"></span>':''}</span>${ic('fwd')}</a>`).join('')}</div></section>`).join('')}`}
+const EXGROUPS=[{k:'day',t:'Ogni giorno'},{k:'ear',t:'Ascolto e pronuncia'},{k:'gram',t:'Grammatica in pratica'},{k:'voc',t:'Vocabolario'}];
+const EXLIST=[
+ {k:'ripasso',g:'day',i:'review',t:'Ripasso',d:'Frasi salvate e parole in apprendimento, a intervalli crescenti'},
+ {k:'nuove',g:'day',i:'plus',t:'Parole nuove',d:'Le parole più frequenti, ognuna dentro una frase vera'},
+ {k:'shadowing',g:'day',i:'shadow',t:'Shadowing',d:'Parla insieme alla voce, poi registrati e confronta'},
+ {k:'ascolta',g:'ear',i:'ear',t:'Ascolta e capisci',d:'Senti una frase e scegli cosa significa'},
+ {k:'dettato',g:'ear',i:'pen',t:'Dettato',d:'Ascolta e scrivi quello che senti'},
+ {k:'pronuncia',g:'ear',i:'mic',t:'Pronuncia',d:'Leggi ad alta voce: il browser ti dice cosa ha capito'},
+ {k:'suoni',g:'ear',i:'spk',t:'Suoni difficili',d:'ü, ö, ch, ei/ie: distinguere e ripetere'},
+ {k:'numeri',g:'ear',i:'hash',t:'Numeri',d:'Prezzi, orari, date: capirli al volo'},
+ {k:'articoli',g:'gram',i:'tag',t:'der, die, das',d:'Il genere dei nomi più usati, con i trucchi delle terminazioni'},
+ {k:'verbi',g:'gram',i:'verb',t:'Verbi',d:'Presente, passato prossimo e tabelle dei verbi più usati'},
+ {k:'casi',g:'gram',i:'logic',t:'Casi',d:'Scegli l\'articolo giusto: der, den o dem?'},
+ {k:'ordina',g:'gram',i:'order',t:'Ordina la frase',d:'Rimetti in ordine le parole: il verbo al posto giusto'},
+ {k:'completa',g:'gram',i:'gap',t:'Completa il testo',d:'Riscrivi le parole mancanti di un testo'},
+ {k:'parole',g:'voc',i:'words',t:'Le 1000 parole',d:'Elenco per frequenza, con il tuo stato per ogni parola'},
+ {k:'parole-frasi',g:'voc',i:'star',t:'Frasi salvate',d:'Le frasi che hai salvato leggendo, esportabili in Anki'},
+ {k:'parole-komposita',g:'voc',i:'logic',t:'Parole composte',d:'Fensterbank = Fenster + Bank: indovina dai pezzi'}];
+Object.assign(IC,{tag:'<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.5"/>',verb:'<path d="M4 6h10M4 12h16M4 18h7"/><path d="M17 4l3 3-3 3"/>',order:'<rect x="3" y="4" width="7" height="6" rx="1.5"/><rect x="14" y="4" width="7" height="6" rx="1.5"/><rect x="8" y="14" width="8" height="6" rx="1.5"/>'});
+
+/* risultato condiviso per gli esercizi a domande */
+function scoreBar(st,tot){return `<div class="between"><span class="small muted tnum">${Math.min(st.n+1,tot)} / ${tot}</span><span class="small tnum">${st.ok} giuste</span></div><div class="bar"><i style="width:${100*st.n/tot}%"></i></div>`}
+function endCard(st,tot,again,extra=''){return `<div class="fcard" style="align-items:flex-start"><h2>${st.ok} su ${tot} giuste</h2><p class="muted" style="margin:0">${st.ok===tot?'Perfetto.':st.ok>=tot*.7?'Bene: rifallo domani e salirà ancora.':'Rifallo: le domande sbagliate tornano per prime.'}</p>${extra}<div class="row"><button class="btn pri" id="again">Ancora</button><a class="btn sec" href="#allenati">Altri esercizi</a></div></div>`}
+const normA=x=>x.trim().toLowerCase().replace(/\s+/g,' ').replace(/[.!?]$/,'');
+
+/* ===== der / die / das ===== */
+const ART_RULES=[[/(ung|heit|keit|schaft|ion|tät|ik|ie|ei|ur|enz|anz)$/,'f','Le parole che finiscono in -ung, -heit, -keit, -schaft, -ion, -tät, -ik, -ie, -ei sono femminili.'],
+ [/(chen|lein|ment|um|nis)$/,'n','-chen e -lein (diminutivi), -ment e -um sono quasi sempre neutri.'],
+ [/(ling|ismus|or|ist|ant)$/,'m','-ling, -ismus, -or, -ist, -ant sono maschili.'],
+ [/e$/,'f','Circa il 90% dei nomi in -e è femminile (con eccezioni come der Name, der Junge).']];
+const ruleFor=w=>ART_RULES.find(r=>r[0].test(w.toLowerCase()));
+let ARTP=null;const artPool=()=>ARTP||(ARTP=CORE.filter(i=>'mfn'.includes(V[i][2])&&V[i][3]==='n').slice(0,600));
+function artStat(){const e=Object.values(S.art||{});return e.length?`${e.filter(x=>x[0]>x[1]).length} nomi sicuri`:'600 nomi più usati'}
+let AQ=null;
+function vArt(m){ACT.kind='rev';S.art=S.art||{};const pool=artPool();
+  const score=i=>{const e=S.art[V[i][0]];return e?(e[1]*3-e[0])+(Date.now()-e[2])/DAY*.3:1+RANK[i]/400};
+  const pick=shuffle(pool.filter(i=>known(i)||ws(i)>0)).concat(pool).filter((x,k,a)=>a.indexOf(x)===k);
+  AQ={q:pick.sort((a,b)=>score(b)-score(a)).slice(0,15),n:0,ok:0};
+  m.innerHTML=`<div class="vhead"><div><h1>der, die, das</h1><p>Il genere va imparato con la parola, ma le terminazioni aiutano molto. Rispondi d'istinto: dopo ogni risposta senti la parola con il suo articolo.</p></div></div><div class="flash" id="aq"></div>`;drawArt()}
+function drawArt(){const box=$('#aq');if(!box||!AQ)return;const tot=AQ.q.length;
+  if(AQ.n>=tot){box.innerHTML=endCard(AQ,tot);$('#again').onclick=()=>vArt($('#view'));return}
+  const i=AQ.q[AQ.n],w=V[i][0],g=V[i][2];
+  box.innerHTML=`${scoreBar(AQ,tot)}<div class="fcard center"><span class="w1 big-w">${esc(w)}</span><span class="muted">${esc(V[i][1])}</span></div><div class="gbtns big"><button class="m" data-g="m">der</button><button class="f" data-g="f">die</button><button class="n" data-g="n">das</button></div><div id="afb" class="small" role="status" style="min-height:44px"></div><p class="tiny muted" style="text-align:center">Tasti 1 · 2 · 3</p>`;
+  const go=a=>{if(box.dataset.lock)return;box.dataset.lock=1;const ok=a===g;const e=S.art[w]||(S.art[w]=[0,0,0]);ok?e[0]++:e[1]++;e[2]=Date.now();if(ok)AQ.ok++;save();
+   $$('[data-g]',box).forEach(b=>{b.disabled=true;if(b.dataset.g===g)b.classList.add('right');else if(b.dataset.g===a)b.classList.add('wrong')});
+   const r=ruleFor(w);$('#afb',box).innerHTML=`<b class="art-${g}">${ART[g]}</b> ${esc(w)} ${playBtn(disp(i))}${r?`<div class="muted">${r[1]===g?'Regola: ':'Eccezione alla regola: '}${esc(r[2])}</div>`:''}`;speak(disp(i));
+   setTimeout(()=>{delete box.dataset.lock;AQ.n++;drawArt()},ok?1100:2600)};
+  $$('[data-g]',box).forEach(b=>b.onclick=()=>go(b.dataset.g));box.onkey=k=>{const g2={1:'m',2:'f',3:'n'}[k];if(g2)go(g2)}}
+
+/* ===== verbi ===== */
+const VB={mode:'pres',filt:'tutti',q:null};
+const auxF=(aux,p)=>(aux==='sein'?['bin','bist','ist','sind','seid','sind']:['habe','hast','hat','haben','habt','haben'])[p];
+function vbPool(){return D.VB.filter(v=>VB.filt==='tutti'||(VB.filt==='irr'?v[6]:VB.filt==='mod'?['können','müssen','wollen','sollen','dürfen'].includes(v[0]):!v[6]))}
+function vVerbs(m,arg){ACT.kind='rev';if(arg)VB.mode=arg==='tabelle'?'tab':arg;
+  m.innerHTML=`<div class="vhead"><div><h1>Verbi</h1><p>I ${D.VB.length} verbi che userai di più. Scrivi la forma giusta: dopo ogni risposta senti la forma corretta e vedi la tabella completa.</p></div></div>
+  <div class="row" style="margin-bottom:14px"><div class="seg" role="tablist">${[['pres','Presente'],['perf','Passato (Perfekt)'],['tab','Tabelle']].map(([k,l])=>`<button data-md="${k}" class="${VB.mode===k?'on':''}">${l}</button>`).join('')}</div><select class="field" id="vbF" aria-label="Quali verbi">${[['tutti','Tutti i verbi'],['irr','Solo irregolari'],['reg','Solo regolari'],['mod','Solo modali']].map(([k,l])=>`<option value="${k}" ${VB.filt===k?'selected':''}>${l}</option>`).join('')}</select></div><div id="vb"></div>`;
+  $$('[data-md]',m).forEach(b=>b.onclick=()=>{VB.mode=b.dataset.md;vVerbs(m)});$('#vbF',m).onchange=e=>{VB.filt=e.target.value;vVerbs(m)};
+  if(VB.mode==='tab')return drawVerbTables($('#vb',m));
+  const pool=vbPool(),sc=v=>{const e=(S.vb||{})[v[0]];return e?e[1]*3-e[0]+Math.random():2+Math.random()*2};
+  VB.q={items:pool.slice().sort((a,b)=>sc(b)-sc(a)).slice(0,12).map(v=>({v,p:rint(6)})),n:0,ok:0};drawVerb()}
+function verbTable(v){return `<table class="rules vt"><tr><th></th><th>Presente</th><th>Perfekt</th></tr>${PRONS.map((p,k)=>`<tr><td class="muted">${p}</td><td><button class="lnk" data-say="${esc(p+' '+v[2][k])}">${esc(v[2][k])}</button></td><td><button class="lnk" data-say="${esc(p+' '+auxF(v[4],k)+' '+v[5])}">${auxF(v[4],k)} ${esc(v[5])}</button></td></tr>`).join('')}</table><p class="small muted" style="margin:6px 0 0">Präteritum: <button class="lnk" data-say="ich ${esc(v[3])}">ich ${esc(v[3])}</button> · ausiliare <b>${v[4]}</b></p>`}
+const PRONS=['ich','du','er/sie/es','wir','ihr','sie/Sie'],PRON1=['ich','du','er','wir','ihr','sie'];
+function drawVerb(){const box=$('#vb');const Q=VB.q;const tot=Q.items.length;if(!box)return;
+  if(Q.n>=tot){box.innerHTML=`<div class="flash">${endCard(Q,tot)}</div>`;$('#again').onclick=()=>vVerbs($('#view'));return}
+  const {v,p}=Q.items[Q.n],perf=VB.mode==='perf';const ans=perf?auxF(v[4],p)+' '+v[5]:v[2][p];const say=PRON1[p]+' '+ans;
+  box.innerHTML=`<div class="flash">${scoreBar(Q,tot)}<div class="fcard"><div class="muted">${perf?'Passato prossimo di':'Presente di'} <b class="read">${esc(v[0])}</b> · ${esc(v[1])}</div><div class="row" style="align-items:baseline;gap:10px"><span class="w1">${PRONS[p]}</span><input class="field read big-in" id="vIn" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Forma del verbo" placeholder="${perf?'habe … / bin …':'…'}"></div>${umlautBar()}<div id="vfb" role="status"></div></div><div class="row"><button class="btn pri" id="vChk">Controlla</button><button class="btn ghost" id="vSkip">Non lo so</button></div></div>`;
+  const inp=$('#vIn',box);bindUml(box,inp);inp.focus();let done=false;
+  const chk=give=>{if(done){Q.n++;drawVerb();return}const val=normA(inp.value);if(!val&&!give)return;done=true;const ok=!give&&val===normA(ans);const e=(S.vb=S.vb||{})[v[0]]||(S.vb[v[0]]=[0,0]);ok?e[0]++:e[1]++;if(ok)Q.ok++;save();
+   inp.readOnly=true;inp.classList.add(ok?'right':'wrong');$('#vfb',box).innerHTML=`<p style="margin:8px 0"><b style="color:var(--${ok?'ok':'bad'})">${ok?'Giusto!':'La forma giusta è:'}</b> <span class="read" style="font-size:20px">${esc(say)}</span> ${playBtn(say)}</p>${verbTable(v)}`;speak(say);$('#vChk',box).textContent='Avanti';$('#vSkip',box).hidden=true};
+  $('#vChk',box).onclick=()=>chk(false);$('#vSkip',box).onclick=()=>chk(true);inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();chk(false)}}}
+function drawVerbTables(box){const L=vbPool();box.innerHTML=`<input class="field" id="vbS" type="search" placeholder="Cerca un verbo in tedesco o in italiano" style="max-width:340px;margin-bottom:12px" aria-label="Cerca verbo"><div class="vgrid" id="vbg"></div>`;
+  const draw=q=>{q=q.toLowerCase();$('#vbg',box).innerHTML=L.filter(v=>!q||v[0].includes(q)||v[1].toLowerCase().includes(q)).map(v=>`<details class="card vcard"><summary><span class="read" style="font-size:19px;font-weight:600">${esc(v[0])}</span> <span class="muted small">${esc(v[1])}</span>${v[6]?' <span class="pill">irregolare</span>':''}</summary>${verbTable(v)}</details>`).join('')||'<p class="muted">Nessun verbo trovato.</p>'};
+  draw('');$('#vbS',box).oninput=e=>draw(e.target.value)}
+
+/* ===== casi ===== */
+let CQ=null;const CASE_IT={nom:'nominativo',akk:'accusativo',dat:'dativo'};
+const CASE_OPTS={'der/die/das':['der','die','das','den','dem'],'ein/eine':['ein','eine','einen','einem','einer'],'mein/meine':['mein','meine','meinen','meinem','meiner']};
+function vCases(m){ACT.kind='rev';CQ={q:shuffle(D.CASES).slice(0,12),n:0,ok:0};
+  m.innerHTML=`<div class="vhead"><div><h1>Casi</h1><p>Scegli l'articolo giusto. Chiediti due cose: il nome è maschile, femminile o neutro? E che ruolo ha nella frase (soggetto, oggetto, dopo «mit»…)?</p></div><a class="btn ghost sm" href="#manuale-casi">${ic('book')} Ripassa la tabella</a></div><div class="flash" id="cq"></div>`;drawCase()}
+function drawCase(){const box=$('#cq');if(!box||!CQ)return;const tot=CQ.q.length;
+  if(CQ.n>=tot){box.innerHTML=endCard(CQ,tot);$('#again').onclick=()=>vCases($('#view'));return}
+  const c=CQ.q[CQ.n],cap=c.q.startsWith('___');const opts=CASE_OPTS[c.base].map(o=>cap?o[0].toUpperCase()+o.slice(1):o);
+  box.innerHTML=`${scoreBar(CQ,tot)}<div class="fcard"><div class="read" style="font-size:26px;line-height:1.4">${esc(c.q).replace('___','<span class="blank">___</span>')}</div><div class="small muted"><b class="art-${c.g}">${esc(c.n)}</b> = ${esc(c.it)} · ${c.g==='m'?'maschile':c.g==='f'?'femminile':'neutro'}</div></div><div class="opts five">${opts.map(o=>`<button class="opt" data-o="${esc(o)}">${esc(o)}</button>`).join('')}</div><div id="cfb" class="small" role="status" style="min-height:48px"></div>`;
+  $$('.opt',box).forEach(b=>b.onclick=()=>{const ok=b.dataset.o===c.a;if(ok)CQ.ok++;$$('.opt',box).forEach(x=>{x.disabled=true;if(x.dataset.o===c.a)x.classList.add('right')});if(!ok)b.classList.add('wrong');
+   $('#cfb',box).innerHTML=`<div class="read" style="font-size:19px">${esc(c.s)} ${playBtn(c.s)}</div><div class="muted"><b>${CASE_IT[c.case]}</b>: ${esc(c.why)}.</div><button class="btn sec sm" id="cNext" style="margin-top:8px">Avanti</button>`;speak(c.s);$('#cNext',box).onclick=()=>{CQ.n++;drawCase()};$('#cNext',box).focus()})}
+
+/* ===== ordina la frase ===== */
+let OQ=null;
+function orderPool(){const T=D.S.filter(t=>S.done[t.id]||compOf(t.s)>=.6);const src=(T.length>=3?T:D.S.filter(t=>t.lv==='A1'));return src.flatMap(t=>t.s.filter(s=>{const n=s[0].split(' ').length;return n>=4&&n<=10&&s[1]&&!/[«»"„“]/.test(s[0])}).map(s=>[s[0],s[1]]))}
+function vOrder(m){ACT.kind='out';OQ={q:shuffle(orderPool()).slice(0,8),n:0,ok:0};
+  m.innerHTML=`<div class="vhead"><div><h1>Ordina la frase</h1><p>Tocca le parole nell'ordine giusto. Ricorda: il verbo coniugato sta al secondo posto, la seconda parte del verbo (participio, infinito, prefisso) va in fondo.</p></div></div><div class="flash" id="oq"></div>`;drawOrder()}
+function drawOrder(){const box=$('#oq');if(!box||!OQ)return;const tot=OQ.q.length;
+  if(OQ.n>=tot){box.innerHTML=endCard(OQ,tot);$('#again').onclick=()=>vOrder($('#view'));return}
+  const [de,it]=OQ.q[OQ.n];const punct=(de.match(/[.!?]$/)||[''])[0];const words=de.replace(/[.!?]$/,'').split(' ');
+  let tiles=shuffle(words.map((w,k)=>({w,k})));if(tiles.every((t,k)=>t.k===k))tiles=tiles.reverse();const built=[];
+  const draw=()=>{$('#ob',box).innerHTML=built.length?built.map((t,k)=>`<button class="tile on" data-b="${k}">${esc(t.w)}</button>`).join('')+`<span class="punct">${punct}</span>`:'<span class="muted small">Tocca le parole qui sotto</span>';
+   $('#ot',box).innerHTML=tiles.map((t,k)=>`<button class="tile" data-t="${k}" ${built.includes(t)?'disabled':''}>${esc(t.w)}</button>`).join('');
+   $$('[data-t]',box).forEach(b=>b.onclick=()=>{built.push(tiles[+b.dataset.t]);draw();if(built.length===words.length)check()});
+   $$('[data-b]',box).forEach(b=>b.onclick=()=>{if(box.dataset.done)return;built.splice(+b.dataset.b,1);draw()})};
+  box.innerHTML=`${scoreBar(OQ,tot)}<div class="fcard"><div class="muted">Come si dice in tedesco?</div><div style="font-size:19px">${esc(it)}</div><div class="obuilt" id="ob"></div></div><div class="tiles" id="ot"></div><div class="row"><button class="btn ghost" id="oHear">${ic('spk')} Aiuto: ascolta</button><button class="btn ghost" id="oReset">Ricomincia</button></div><div id="ofb" role="status"></div>`;
+  draw();$('#oHear',box).onclick=()=>speak(de);$('#oReset',box).onclick=()=>{if(box.dataset.done)return;built.length=0;draw()};
+  const check=()=>{box.dataset.done=1;const mine=built.map(t=>t.w).join(' ');const ok=mine===words.join(' ');if(ok)OQ.ok++;
+   $('#ofb',box).innerHTML=`<div class="fcard ${ok?'okc':''}" style="gap:6px"><b style="color:var(--${ok?'ok':'bad'})">${ok?'Esatto!':'L\'originale è:'}</b><div class="read" style="font-size:20px">${esc(de)} ${playBtn(de)}</div>${ok?'':'<p class="tiny muted" style="margin:0">A volte in tedesco esiste più di un ordine corretto (per esempio con l\'avverbio di tempo all\'inizio). Se la tua frase aveva il verbo al secondo posto, poteva essere giusta anche lei.</p>'}<div class="row">${ok?'':'<button class="btn ghost sm" id="oMine">La mia era corretta lo stesso</button>'}<button class="btn pri sm" id="oNext">Avanti</button></div></div>`;
+   speak(de);$('#oNext',box).onclick=()=>{delete box.dataset.done;OQ.n++;drawOrder()};const mb=$('#oMine',box);if(mb)mb.onclick=()=>{OQ.ok++;mb.disabled=true;mb.textContent='Contata come giusta'}}}
+
+/* ===== ascolta e capisci ===== */
+let LQ=null;
+function vListen(m){ACT.kind='imm';const T=D.S.filter(t=>compOf(t.s)>=.5||S.done[t.id]);const src=(T.length>=3?T:D.S.filter(t=>t.lv==='A1'));
+  const all=src.flatMap(t=>t.s.filter(s=>s[1]&&s[0].length>18).map(s=>[s[0],s[1],t.lv]));
+  LQ={q:shuffle(all).slice(0,10),all,n:0,ok:0};
+  m.innerHTML=`<div class="vhead"><div><h1>Ascolta e capisci</h1><p>Senti una frase senza vederla e scegli cosa significa. Puoi riascoltarla, anche lentamente, prima di rispondere.</p></div></div><div class="flash" id="lq"></div>`;drawListen()}
+function drawListen(){const box=$('#lq');if(!box||!LQ)return;const tot=LQ.q.length;
+  if(LQ.n>=tot){box.innerHTML=endCard(LQ,tot);$('#again').onclick=()=>vListen($('#view'));return}
+  const [de,it]=LQ.q[LQ.n];const opts=shuffle([it,...shuffle(LQ.all.filter(x=>x[1]!==it)).slice(0,3).map(x=>x[1])]);
+  box.innerHTML=`${scoreBar(LQ,tot)}<div class="fcard center"><div class="row">${playBtn(de,'lg')}${slowBtn(de)}</div><div id="lde" class="read" style="font-size:21px;min-height:30px" aria-live="polite"></div></div><div class="opts">${opts.map((o,k)=>`<button class="opt" data-k="${k}">${esc(o)}</button>`).join('')}</div><button class="btn sec" id="lNext" hidden>Avanti</button>`;
+  setTimeout(()=>speak(de),250);
+  $$('.opt',box).forEach(b=>b.onclick=()=>{const ok=opts[+b.dataset.k]===it;if(ok)LQ.ok++;$$('.opt',box).forEach((x,k)=>{x.disabled=true;if(opts[k]===it)x.classList.add('right')});if(!ok)b.classList.add('wrong');$('#lde',box).textContent=de;const n=$('#lNext',box);n.hidden=false;n.focus();n.onclick=()=>{LQ.n++;drawListen()}})}
 
 /* fonti condivise */
 function srcSents(id){if(id==='frasi')return S.ph.map(p=>[p.de,p.it]);if(id&&id.startsWith('m:')){const c=D.M.find(x=>x.id===id.slice(2));return c?c.ex.map(e=>[e[0],e[1]]):[]}const t=getText(id);return t?t.s.map(s=>[s[0],s[1]]):[]}
@@ -433,7 +551,7 @@ function drawStage(){const st=$('#stage');if(!st)return;if(!SH.sents.length){st.
    <div class="row" style="margin-top:auto"><button class="play" id="shPrev" aria-label="Frase precedente">${ic('prev')}</button><button class="btn pri" id="shPlay" style="min-width:150px">${SH.playing?ic('pause')+' Pausa':ic('play')+' '+(SH.i||SH.rep?'Riprendi':'Inizia')}</button><button class="play" id="shNext" aria-label="Frase successiva">${ic('next')}</button>${slowBtn(de)}<span class="small muted">${ph===0?'Ascolta senza parlare':ph===1?'Ora parla insieme alla voce':'Solo orecchio: niente testo'}</span></div>`;
   $('#shPlay').onclick=()=>{if(SH.playing){shStop();drawStage()}else{SH.playing=true;shLoop(++SH.run)}};
   $('#shPrev').onclick=()=>{shStop();SH.i=Math.max(0,SH.i-1);SH.rep=0;drawStage();drawRec()};$('#shNext').onclick=()=>{shStop();SH.i=Math.min(SH.sents.length-1,SH.i+1);SH.rep=0;drawStage();drawRec()}}
-async function shLoop(run){ACT.kind='sha';while(SH.playing&&run===SH.run){drawStage();const [de]=SH.sents[SH.i];const ok=await speakP(de,{rate:SH.speed});if(!ok||run!==SH.run||!SH.playing){if(run===SH.run){SH.playing=false;drawStage()}return}
+async function shLoop(run){ACT.kind='sha';while(SH.playing&&run===SH.run){drawStage();const [de]=SH.sents[SH.i];const ok=await speakP(de,{rate:SH.speed,slow:SH.speed<.9});if(!ok||run!==SH.run||!SH.playing){if(run===SH.run){SH.playing=false;drawStage()}return}
   await sleep(SH.rep===0?700:900);if(run!==SH.run)return;SH.rep++;if(SH.rep>=SH.reps){SH.rep=0;SH.i++;drawRec();if(SH.i>=SH.sents.length){SH.i=0;SH.playing=false;drawStage();toast('Fine del testo. Ricomincia o scegline un altro.');return}}}}
 /* registra e confronta (MediaRecorder) */
 const REC={mr:null,chunks:[],url:null};
@@ -647,7 +765,7 @@ function updateMini(){const mi=$('#mini');if(!PASS.on&&!PASS.paused){mi.hidden=t
 function nightStart(){modal(`<h2>Ascolto prima di dormire</h2><p class="muted small" style="margin:0">15–20 minuti di tedesco già noto prima di addormentarti: alcune ricerche suggeriscono che il cervello consolida nel sonno quello che ascolti poco prima. Lo schermo si oscura e l'audio si ferma da solo.</p><div class="choice">${[15,20,30].map(n=>`<button data-n="${n}"><b>${n} minuti</b><span>${n===20?'consigliato':''}</span></button>`).join('')}</div><div class="mbtns"><button class="btn ghost" id="mNo">Annulla</button></div>`,b=>{$('#mNo',b).onclick=closeModal;$$('[data-n]',b).forEach(x=>x.onclick=()=>{closeModal();const kn=D.S.filter(t=>S.done[t.id]||compOf(t.s)>=.8).map(t=>t.id);passiveStart(kn.length?kn:null,+x.dataset.n);PASS.night=true;const n=$('#night');n.hidden=false;n.innerHTML=`<div class="clock">${x.dataset.n} min</div><div class="s"></div><button class="btn sec" id="nStop">Ferma</button>`;$('#nStop').onclick=passiveStop;updateMini();try{navigator.wakeLock&&navigator.wakeLock.request('screen')}catch(e){}})})}
 
 /* ================= CERCA + SCORCIATOIE ================= */
-const SECTIONS=[['#oggi','Oggi · il piano del giorno'],['#leggi','Leggi & ascolta'],['#parole','Le 1000 parole'],['#nuove','Parole di oggi'],['#parole-frasi','Frasi salvate'],['#parole-komposita','Parole composte'],['#pratica','Pratica'],['#ripasso','Ripasso'],['#shadowing','Shadowing'],['#pronuncia','Pronuncia'],['#dettato','Dettato'],['#completa','Completa il testo'],['#numeri','Numeri'],['#suoni','Suoni e coppie minime'],['#manuale','Manuale'],['#manuale-logica','La logica del tedesco'],['#parla-dialoghi','Dialoghi guidati'],['#parla-scrivi','Scrittura con correzione'],...D.M.map(c=>['#manuale-'+c.id,'Manuale · '+c.t])];
+const SECTIONS=[['#oggi','Oggi · il piano del giorno'],['#allenati','Allenati'],['#articoli','der, die, das'],['#verbi','Verbi'],['#verbi-tab','Tabelle dei verbi'],['#casi','Casi'],['#ordina','Ordina la frase'],['#ascolta','Ascolta e capisci'],['#leggi','Leggi & ascolta'],['#parole','Le 1000 parole'],['#nuove','Parole di oggi'],['#parole-frasi','Frasi salvate'],['#parole-komposita','Parole composte'],['#pratica','Pratica'],['#ripasso','Ripasso'],['#shadowing','Shadowing'],['#pronuncia','Pronuncia'],['#dettato','Dettato'],['#completa','Completa il testo'],['#numeri','Numeri'],['#suoni','Suoni e coppie minime'],['#manuale','Manuale'],['#manuale-logica','La logica del tedesco'],['#parla-dialoghi','Dialoghi guidati'],['#parla-scrivi','Scrittura con correzione'],...D.M.map(c=>['#manuale-'+c.id,'Manuale · '+c.t])];
 function searchOpen(){modal(`<input class="field" id="sq" type="search" placeholder="Cerca testi, parole, frasi, capitoli…" aria-label="Cerca" autocomplete="off" style="font-size:17px"><div class="sres" id="sr" role="listbox"></div><div class="tiny muted">↑ ↓ per muoverti · Invio per aprire · Esc per chiudere</div>`,b=>{let sel=0,items=[];
   const run=()=>{const q=$('#sq',b).value.trim().toLowerCase();const out=[];
    out.push(...SECTIONS.filter(([h,t])=>!q||t.toLowerCase().includes(q)).slice(0,q?8:12).map(([h,t])=>({h,t,k:'Sezioni',icn:'fwd'})));
@@ -659,14 +777,14 @@ function searchOpen(){modal(`<input class="field" id="sq" type="search" placehol
    $$('.sr',b).forEach(e=>e.onclick=()=>go(+e.dataset.k))};
   const go=k=>{const x=items[k];if(!x)return;if(x.w!==undefined){const i=x.w;speak(disp(i));closeModal();const e=exampleFor(i);modal(`<div class="row">${playBtn(disp(i),'lg')}<h2>${esc(disp(i))}</h2></div><p style="font-size:18px;margin:0">${esc(V[i][1])}</p>${RANK[i]?`<p class="small muted" style="margin:0">Parola n. ${RANK[i]} per frequenza</p>`:''}${e?`<div class="row">${playBtn(e.de)}<span class="read">${esc(e.de)}</span></div><div class="small muted">${esc(e.it)}</div>`:''}<div class="mbtns"><button class="btn sec" id="wL">Da imparare</button><button class="btn sec" id="wK">La conosco</button><button class="btn pri" id="mOk">Chiudi</button></div>`,z=>{$('#mOk',z).onclick=closeModal;$('#wL',z).onclick=()=>{setWord(i,1,e?e.de:'');toast('Aggiunta al ripasso');closeModal()};$('#wK',z).onclick=()=>{setWord(i,4);closeModal()}});return}closeModal();location.hash=x.h};
   $('#sq',b).oninput=()=>{sel=0;run()};$('#sq',b).onkeydown=e=>{if(e.key==='ArrowDown'){e.preventDefault();sel=Math.min(items.length-1,sel+1);run()}else if(e.key==='ArrowUp'){e.preventDefault();sel=Math.max(0,sel-1);run()}else if(e.key==='Enter'){e.preventDefault();go(sel)}};run()})}
-function helpOpen(){modal(`<h2>Scorciatoie da tastiera</h2><div class="kbdlist"><kbd>Ctrl K</kbd><span>Cerca testi, parole, frasi e capitoli</span><kbd>g</kbd><span>poi <b>o</b> Oggi · <b>l</b> Leggi · <b>p</b> Parole · <b>k</b> Pratica · <b>m</b> Manuale · <b>t</b> Parla · <b>r</b> Ripasso · <b>s</b> Shadowing</span><kbd>n</kbd><span>Vai al prossimo passo del piano</span><kbd>Spazio</kbd><span>Lettore: ascolta tutto / pausa · Shadowing: avvia/pausa · Ripasso: gira la carta</span><kbd>← →</kbd><span>Frase precedente / successiva</span><kbd>1 2 3 4</kbd><span>Stato della parola aperta, voto nel ripasso, scelta nelle parole nuove</span><kbd>Esc</kbd><span>Chiudi pannelli e finestre</span><kbd>?</kbd><span>Questa guida</span></div><div class="mbtns"><button class="btn pri" id="mOk">Ok</button></div>`,b=>{$('#mOk',b).onclick=closeModal})}
+function helpOpen(){modal(`<h2>Scorciatoie da tastiera</h2><div class="kbdlist"><kbd>Ctrl K</kbd><span>Cerca testi, parole, frasi e capitoli</span><kbd>g</kbd><span>poi <b>o</b> Oggi · <b>l</b> Leggi · <b>a</b> Allenati · <b>m</b> Manuale · <b>t</b> Parla · <b>p</b> Parole · <b>r</b> Ripasso · <b>s</b> Shadowing</span><kbd>n</kbd><span>Vai al prossimo passo del piano</span><kbd>Spazio</kbd><span>Lettore: ascolta tutto / pausa · Shadowing: avvia/pausa · Ripasso: gira la carta</span><kbd>← →</kbd><span>Frase precedente / successiva</span><kbd>1 2 3 4</kbd><span>Stato della parola aperta, voto nel ripasso, scelta nelle parole nuove</span><kbd>Esc</kbd><span>Chiudi pannelli e finestre</span><kbd>?</kbd><span>Questa guida</span></div><div class="mbtns"><button class="btn pri" id="mOk">Ok</button></div>`,b=>{$('#mOk',b).onclick=closeModal})}
 let gPrefix=0;
 addEventListener('keydown',e=>{const inF=e.target.matches('input,textarea,select');
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();searchOpen();return}
   if(e.key==='Escape'){if(!$('#modal').hidden){closeModal();return}if(PASS.night){passiveStop();return}if(WP){closeWord();return}}
   if(inF||!$('#modal').hidden||e.ctrlKey||e.metaKey||e.altKey)return;
   const v=route().v;
-  if(gPrefix&&Date.now()-gPrefix<1200){gPrefix=0;const map={o:'oggi',l:'leggi',p:'parole',r:'ripasso',s:'shadowing',d:'dettato',t:'parla',k:'pratica',m:'manuale'};if(map[e.key])location.hash='#'+map[e.key];return}
+  if(gPrefix&&Date.now()-gPrefix<1200){gPrefix=0;const map={o:'oggi',l:'leggi',a:'allenati',p:'parole',r:'ripasso',s:'shadowing',d:'dettato',t:'parla',m:'manuale'};if(map[e.key])location.hash='#'+map[e.key];return}
   if(e.key==='g'){gPrefix=Date.now();return}
   if(e.key==='?'){helpOpen();return}
   if(e.key==='n'){const n=nextStep();if(n){if(n.act==='pas')passiveStart(null,0);else location.hash=n.href}return}
@@ -674,16 +792,17 @@ addEventListener('keydown',e=>{const inF=e.target.matches('input,textarea,select
     if(e.key===' '){e.preventDefault();$('#playAll')?.click()}else if(e.key==='ArrowRight'){readStop();playSent(Math.min(RD.t.s.length-1,RD.cur+1))}else if(e.key==='ArrowLeft'){readStop();playSent(Math.max(0,RD.cur-1))}}
   if(v==='shadowing'){if(e.key===' '){e.preventDefault();$('#shPlay')?.click()}if(e.key==='ArrowRight')$('#shNext')?.click();if(e.key==='ArrowLeft')$('#shPrev')?.click()}
   if(v==='ripasso'&&RV&&!RV.done){if(!RV.show&&(e.key===' '||e.key==='Enter')){e.preventDefault();$('#rvShow')?.click()}else if(RV.show&&/^[1-4]$/.test(e.key))gradeReview(+e.key)}
+  if(v==='articoli'&&/^[123]$/.test(e.key)){const b=$('#aq');b&&b.onkey&&b.onkey(e.key)}
   if(v==='nuove'&&NW&&!NW.fin){if(e.key==='1')$('#nwKnow')?.click();if(e.key==='2')$('#nwLearn')?.click()}});
 
 /* ================= IMPOSTAZIONI, BACKUP, OFFLINE, INSTALLA ================= */
 let installEvt=null;
-addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e;$('#instBtn').hidden=false});
-addEventListener('appinstalled',()=>{$('#instBtn').hidden=true;toast('Wortweg installata!')});
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e;$$('[data-act=install]').forEach(b=>b.hidden=false)});
+addEventListener('appinstalled',()=>{$$('[data-act=install]').forEach(b=>b.hidden=true);toast('Wortweg installata!')});
 const isStandalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone;
-function installHelp(){if(installEvt){installEvt.prompt();installEvt.userChoice.finally(()=>{installEvt=null;$('#instBtn').hidden=true});return}
+function installHelp(){if(installEvt){installEvt.prompt();installEvt.userChoice.finally(()=>{installEvt=null;$$('[data-act=install]').forEach(b=>b.hidden=true)});return}
   const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);modal(`<h2>Installa Wortweg</h2>${isStandalone()?'<p>È già installata su questo dispositivo.</p>':ios?'<p>Su iPhone e iPad: apri questa pagina in <b>Safari</b>, tocca il pulsante <b>Condividi</b> (il quadrato con la freccia) e scegli <b>Aggiungi alla schermata Home</b>.</p>':'<p>In Chrome o Edge: apri il menu del browser (⋮) e scegli <b>Installa app</b> o <b>Aggiungi a schermata Home</b>. Su computer trovi anche l\'icona di installazione nella barra degli indirizzi.</p>'}<p class="small muted">Una volta installata si apre come un'app, a schermo intero, e funziona anche offline.</p><div class="mbtns"><button class="btn pri" id="mOk">Ok</button></div>`,b=>{$('#mOk',b).onclick=closeModal})}
-async function offlineAll(btn){if(!('caches' in window)){toast('Il browser non supporta la cache offline');return}const ids=[...new Set(Object.values(D.A))];const c=await caches.open('ww-media');let n=0,fail=0;btn.disabled=true;
+async function offlineAll(btn){if(!('caches' in window)){toast('Il browser non supporta la cache offline');return}const ids=[...new Set([...Object.values(D.A),...Object.values(D.AS||{})])];const c=await caches.open('ww-media');let n=0,fail=0;btn.disabled=true;
   const batch=12;for(let k=0;k<ids.length;k+=batch){await Promise.all(ids.slice(k,k+batch).map(async id=>{const u=clipUrl(id);try{if(!(await c.match(u))){const r=await fetch(u);if(r.ok)await c.put(u,r);else fail++}}catch(e){fail++}n++}));btn.textContent=`Scarico… ${Math.round(100*n/ids.length)}%`}
   btn.textContent=fail?`Fatto (${fail} non scaricati)`:'Tutto l\'audio è offline ✓';S.offline=today();save()}
 function settings(){const s=S.set;const sel=(id,vals,cur,suf)=>`<select class="field" id="${id}">${vals.map(v=>`<option value="${v}" ${v==cur?'selected':''}>${v}${suf}</option>`).join('')}</select>`;
@@ -725,7 +844,7 @@ function onboarding(){modal(`<div class="eyebrow">Benvenuto in Wortweg</div><h2>
   $$('[data-l]',b).forEach(x=>x.onclick=()=>{const n=+x.dataset.l;CORE.slice(0,n).forEach(i=>{if(ws(i)===0)S.w[V[i][0]]={s:4,b:0,d:0,t:Date.now()}});S.onb=true;S.set.level=n>=800?'A2':'A1';save();closeModal();render();toast(n?`${n} parole segnate come conosciute`:'Si parte!')})})}
 
 /* ================= AVVIO ================= */
-$('#srchBtn').onclick=searchOpen;$('#helpBtn').onclick=helpOpen;$('#setBtn').onclick=settings;$('#instBtn').onclick=installHelp;
+$$('[data-act]').forEach(b=>b.onclick=({search:searchOpen,help:helpOpen,settings,install:installHelp})[b.dataset.act]);
 addEventListener('online',()=>$('#offl').hidden=true);addEventListener('offline',()=>$('#offl').hidden=false);$('#offl').hidden=online();
 if('serviceWorker' in navigator&&location.protocol!=='file:'){navigator.serviceWorker.register('sw.js').then(reg=>{reg.addEventListener('updatefound',()=>{const w=reg.installing;w&&w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller){const t=$('#upd');t.hidden=false;t.onclick=()=>w.postMessage('skip')}})})}).catch(()=>{})}
 if('serviceWorker' in navigator&&navigator.serviceWorker.controller){let rl=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!rl){rl=true;location.reload()}})}
