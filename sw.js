@@ -1,4 +1,4 @@
-const V='ww-shell-5.0.0';
+const V='ww-shell-5.1.0';
 const SHELL=['./','index.html','style.css','app.js','data.js','manifest.webmanifest','icons/icon-192.png','icons/icon-512.png','fonts/barlow-latin-400-normal.woff2','fonts/barlow-latin-500-normal.woff2','fonts/barlow-latin-600-normal.woff2','fonts/barlow-semi-condensed-latin-600-normal.woff2','fonts/barlow-semi-condensed-latin-700-normal.woff2','fonts/literata-latin-wght-normal.woff2'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(V).then(c=>c.addAll(SHELL)))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k.startsWith('ww-shell')&&k!==V).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))});
